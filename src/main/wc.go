@@ -5,6 +5,7 @@ import (
 	"strings"
 	"fmt"
 	"os"
+	"strconv"
 	"unicode"
 )
 
@@ -36,6 +37,7 @@ func mapF(filename string, contents string) []mapreduce.KeyValue {
 // any map task.
 //
 func reduceF(key string, values []string) string {
+	// Your code here (Part II).
 	return strconv.Itoa(len(values))
 }
 
