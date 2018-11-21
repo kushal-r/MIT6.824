@@ -27,6 +27,7 @@ func doMap(
 
 	for i := 0; i < nReduce; i++ {
 		f, err := os.Create(reduceName(jobName, mapTask, i))
+		defer f.Close()
 		if err != nil {
 			fmt.Print("Create file failed")
 		} else {
@@ -40,10 +41,6 @@ func doMap(
 		if encs[r] != nil {
 			encs[r].Encode(&kv)
 		}
-	}
-
-	for _, f := range files {
-		f.Close()
 	}
 }
 
