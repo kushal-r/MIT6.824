@@ -1,11 +1,11 @@
 package main
 
 import (
-	"strconv"
-	"strings"
 	"fmt"
+	"mapreduce"
 	"os"
 	"strconv"
+	"strings"
 	"unicode"
 )
 
@@ -21,14 +21,13 @@ func mapF(filename string, contents string) []mapreduce.KeyValue {
 		return !unicode.IsLetter(c)
 	}
 
-	result := []mapreduce.KeyValue 
-	words := strings.FieldsFunc(contents, function) {
-		for _, word := range words {
-			kv := mapreduce.KeyValue{word, "1"}
-			append(result, kv)
-		}
+	words := strings.FieldsFunc(contents, function)
+	kvs := make([]mapreduce.KeyValue, 0, len(words))
+	for _, word := range words {
+		kv := mapreduce.KeyValue{word, "1"}
+		kvs = append(kvs, kv)
 	}
-	return result
+	return kvs
 }
 
 //
