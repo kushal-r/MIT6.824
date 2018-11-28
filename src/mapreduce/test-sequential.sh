@@ -1,1 +1,0 @@
-env "GOPATH=$PWD/../../" go test -v -run Sequential
