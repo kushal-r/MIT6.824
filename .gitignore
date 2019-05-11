@@ -1,3 +1,5 @@
 .idea/*
 .vscode/*
 src/main/*.txt
+bin/*
+pkg/*
