@@ -66,9 +66,9 @@ type Raft struct {
 	state int // leader, follower, candidate
 	// voted map // key: term, value: voted to
 	// follower
-	appened    bool // 暂时认为 append 就是 leader call follower 成功之后的结论
-	appendChan chan bool
-	voted      int
+	appened          bool // 暂时认为 append 就是 leader call follower 成功之后的结论
+	stateChangedChan chan bool
+	voted            int
 
 	// candidate
 
@@ -133,8 +133,8 @@ func (rf *Raft) readPersist(data []byte) {
 //
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
-	Term int
-	Id   int
+	Term        int
+	CandidateID int
 }
 
 //
@@ -143,17 +143,21 @@ type RequestVoteArgs struct {
 //
 type RequestVoteReply struct {
 	// Your data here (2A).
-	Id int
+	VoteGranted bool
 }
 
-//
 // example RequestVote RPC handler.
-//
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	if rf.term < args.Term {
-		rf.voted = args.Id
-	} else if rf.term == args.Term && rf.voted == args.Id {
+	reply.VoteGranted = false
+
+	if args.Term > rf.term {
+		rf.voted = args.CandidateID
+		rf.term = args.Term
+		rf.state = FOLLOWER_STATE
+		reply.VoteGranted = true
+	} else if args.Term == rf.term && rf.voted == args.CandidateID {
+		reply.VoteGranted = true
 	}
 }
 
@@ -252,63 +256,66 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = FOLLOWER_STATE
 	rf.term = 0
+	rf.voted = -1
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
 	go func() {
 		for {
-			switch rf.state {
-			case LEADER_STATE:
-				return
-			default:
-				rf.schedule()
-			}
+			rf.schedule()
 		}
 	}()
 
 	return rf
 }
 
-//
+// 每个 Raft 节点初始化之后，轮询在这里进行调度
 func (rf *Raft) schedule() {
 	switch rf.state {
 	case LEADER_STATE:
 		fmt.Print("leader")
+		select {
+		case <-rf.stateChangedChan:
+		}
 	case FOLLOWER_STATE:
 		rf.appened = false
 		select {
 		case <-time.After(time.Duration(500+rand.Intn(500)) * time.Millisecond):
-		case <-rf.appendChan:
-			rf.appened = true
+		case <-rf.stateChangedChan:
 		}
 		if !rf.appened {
-			rf.term += 1
+			rf.term++
 			rf.state = CANDIDATE_SATE
 		}
 	case CANDIDATE_SATE:
 		rf.electLeader()
+		select {
+		case <-rf.stateChangedChan:
+		}
 	}
-	fmt.Println(rf.state)
 }
 
 // 选leader
 func (rf *Raft) electLeader() {
 	count := 1
-	for i, _ := range rf.peers {
+	for i := range rf.peers {
 		if i == rf.me {
 			continue
 		}
 
-		args := &RequestVoteArgs{Term: rf.term, Id: rf.me}
+		args := &RequestVoteArgs{Term: rf.term, CandidateID: rf.me}
 		reply := &RequestVoteReply{}
-		if rf.sendRequestVote(i, args, reply) {
-			if reply.Id == rf.me {
-				count++
-				if count > len(rf.peers)/2 {
-					rf.state = LEADER_STATE
-				}
+		if !rf.sendRequestVote(i, args, reply) {
+			continue
+		}
+		if reply.VoteGranted {
+			count++
+			if count > len(rf.peers)/2 {
+				rf.state = LEADER_STATE
 			}
+		} else {
+			rf.state = FOLLOWER_STATE
 		}
 	}
 }
