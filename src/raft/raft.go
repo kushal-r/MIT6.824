@@ -144,6 +144,7 @@ type RequestVoteArgs struct {
 type RequestVoteReply struct {
 	// Your data here (2A).
 	VoteGranted bool
+	Term        int
 }
 
 // example RequestVote RPC handler.
@@ -154,7 +155,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term > rf.term {
 		rf.voted = args.CandidateID
 		rf.term = args.Term
-		rf.state = FOLLOWER_STATE
+		rf.setState(FOLLOWER_STATE)
 		reply.VoteGranted = true
 	} else if args.Term == rf.term && rf.voted == args.CandidateID {
 		reply.VoteGranted = true
@@ -257,6 +258,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.state = FOLLOWER_STATE
 	rf.term = 0
 	rf.voted = -1
+	rf.stateChangedChan = make(chan bool, 50)
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
@@ -272,12 +274,14 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 // 每个 Raft 节点初始化之后，轮询在这里进行调度
 func (rf *Raft) schedule() {
+	rf.mu.Lock()
 	switch rf.state {
 	case LEADER_STATE:
 		fmt.Print("leader")
 		select {
 		case <-rf.stateChangedChan:
 		}
+		rf.mu.Unlock()
 	case FOLLOWER_STATE:
 		rf.appened = false
 		select {
@@ -288,8 +292,11 @@ func (rf *Raft) schedule() {
 			rf.term++
 			rf.state = CANDIDATE_SATE
 		}
+		rf.mu.Unlock()
 	case CANDIDATE_SATE:
 		rf.electLeader()
+		rf.mu.Unlock()
+		rf.voted = rf.me
 		select {
 		case <-rf.stateChangedChan:
 		}
@@ -312,10 +319,16 @@ func (rf *Raft) electLeader() {
 		if reply.VoteGranted {
 			count++
 			if count > len(rf.peers)/2 {
-				rf.state = LEADER_STATE
+				rf.setState(LEADER_STATE)
 			}
 		} else {
-			rf.state = FOLLOWER_STATE
+			rf.setState(FOLLOWER_STATE)
 		}
 	}
+}
+
+// TODO 替换掉代码中重复的模块
+func (rf *Raft) setState(state int) {
+	rf.state = state
+	rf.stateChangedChan <- true
 }
